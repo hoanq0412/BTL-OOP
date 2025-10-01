@@ -9,10 +9,10 @@ Color darkGreen = {43,51,24,255};
 int cellSize = 30; // Kích thước mỗi ô vuông trên lưới
 int cellCount = 25; // Số lượng ô vuông theo chiều ngang/dọc
 int offset = 75; // Khoảng cách từ viền màn hình đến khu vực chơi
-
-bool ElementInDeque(Vector2 element, deque<Vector2> dq) { //Hàm kiểm tra xem một phần tử Vector2 (tọa độ) có nằm trong deque (thân rắn) hay không
-    for (unsigned int i = 0; i < dq.size(); i++) {        // Mục đích kiểm tra xem có va chạm thân rắn hay không hay để food không được repawn trên
-        if (Vector2Equals(dq[i], element)) {              // thân rắn
+// kiem tra de khong tao food tren than ran
+bool ElementInDeque(Vector2 element, deque<Vector2> dq) { 
+    for (unsigned int i = 0; i < dq.size(); i++) { 
+        if (Vector2Equals(dq[i], element)) { 
             return true;
         }
     }
@@ -91,6 +91,8 @@ public:
         direction = {1, 0};
     }
 };
+
+// ----------------- LỚP GAMETIME -----------------
 class GameTime {
 public:
     double stTime;
@@ -104,24 +106,27 @@ public:
         elapsedTime = GetTime() - stTime;
     }
 
+    // Hàm TimeMod không cần thiết nữa với logic CheckPoisonSpawn mới
     bool TimeMod(int mod) {
         return ((int)elapsedTime % mod == 0); // check dk chia het
     } 
 };
-// Khai báo trước các lớp Food. Cần thiết vì lớp Game sử dụng con trỏ BaseFood*, tránh trường hợp lỗi (vì các class tham chiếu đến nhau)
+
+// Khai báo trước các lớp Food
 class BaseFood; 
 class NormalFood;
 class PoisonFood;
-class GameTime;
+
 // ----------------- LỚP GAME (QUẢN LÝ TRẠNG THÁI TRÒ CHƠI) -----------------
 class Game {
 public:
     Snake snake;
-    BaseFood* normalFood; // Chi giu Normal Food
-    PoisonFood* poisonFood;
-    bool isPoisonActive = false;
-    double poisonStTime = 0.0;
-    
+    BaseFood* normalFood; // Food thường
+    PoisonFood* poisonFood; // Food độc
+    bool isPoisonActive = false; // Cờ báo Poison Food đang hiển thị
+    double poisonStTime = 0.0; // Thời điểm Poison Food xuất hiện (để tính thời gian tồn tại)
+    double lastPoisonSpawnTime = 0.0; // Thời điểm Poison Food gần nhất được tạo
+
     GameTime gametime;
 
     bool running = true;
@@ -222,7 +227,8 @@ public :
 // Constructor: Khởi tạo Game với level được chọn và tạo NormalFood đầu tiên
 Game::Game(Level* lvl) : snake(), level(lvl) {
     normalFood = new NormalFood(snake.body);
-    poisonFood = nullptr;
+    poisonFood = nullptr; // Bắt đầu không có Poison Food
+    lastPoisonSpawnTime = 0.0;
 }
 
 // Destructor: Dọn dẹp bộ nhớ đã cấp phát
@@ -238,6 +244,7 @@ Game::~Game() {
 void Game::Draw() {
     normalFood->Draw(); // luon ve
     
+    // Chỉ vẽ Poison Food nếu nó đang hoạt động (CHỈ XẢY RA TRONG HARD MODE)
     if(isPoisonActive && poisonFood != nullptr) {
         poisonFood->Draw();
     }
@@ -248,8 +255,8 @@ void Game::Draw() {
 // Cập nhật trạng thái game mỗi tick
 void Game::Update() {
     if(running) {
-        gametime.Update();
-        CheckPoisonSpawn();
+        gametime.Update(); // Cập nhật thời gian game
+        CheckPoisonSpawn(); // Kiểm tra tạo/xóa Poison Food (chỉ Hard Mode)
 
         snake.Update();
         CheckCollisionWithFood();
@@ -260,37 +267,54 @@ void Game::Update() {
 
 // Kiểm tra va chạm với thức ăn
 void Game::CheckCollisionWithFood() {
-    // Check var cham voi normal food
+    // Check va chạm với Normal Food
     if(Vector2Equals(snake.body[0],normalFood->position)) {
         normalFood->OnConsumed(*this);
         delete normalFood;
+        // Tạo Normal Food mới ngay lập tức
         normalFood = new NormalFood(snake.body);
     }
-    // Check var cham voi poison food
+    
+    // Check va chạm với Poison Food
     if(isPoisonActive && Vector2Equals(snake.body[0],poisonFood->position)) {
         poisonFood->OnConsumed(*this);
         delete poisonFood;
         poisonFood = nullptr;
-        isPoisonActive = false;
+        isPoisonActive = false; // Tắt cờ Poison Food
     }
 }
-// Kiem tra viec tao poison food
+
+// Kiem tra viec tao poison food, CHỈ TRONG HARD MODE
 void Game::CheckPoisonSpawn() {
-    // Check neu poison food da het 6s ton tai
-    if(isPoisonActive && (gametime.elapsedTime - poisonStTime >= 6.0)) {
-        delete poisonFood;
-        poisonFood = nullptr;
-        isPoisonActive = false;
-    }
-    // Xu li viec tao moi poison food 
-    if(!isPoisonActive && gametime.TimeMod(6)) {
-        if(normalFood != nullptr) {
-            poisonFood = new PoisonFood(snake.body);
-            isPoisonActive = true;
-            poisonStTime = gametime.elapsedTime;
+    // 1. Kiểm tra cấp độ
+    LevelHard* hardLevel = dynamic_cast<LevelHard*>(level);
+
+    // CHỈ CHẠY LOGIC NÀY NẾU LÀ HARD MODE
+    if (hardLevel != nullptr) {
+        
+        // Xử lý Poison Food biến mất sau 6 giây
+        if(isPoisonActive && (gametime.elapsedTime - poisonStTime >= 6.0)) {
+            delete poisonFood;
+            poisonFood = nullptr;
+            isPoisonActive = false;
         }
-    }
+        
+        // Xử lý việc tạo mới Poison Food (Tạo mới nếu chưa có và đủ 6 giây trôi qua)
+        if(!isPoisonActive && (gametime.elapsedTime - lastPoisonSpawnTime >= 6.0)) {
+            // Đảm bảo không tạo khi Normal Food đang bị lỗi hoặc không tồn tại (chỉ là biện pháp phòng ngừa)
+            if(normalFood != nullptr) { 
+                poisonFood = new PoisonFood(snake.body);
+                isPoisonActive = true;
+                // Cập nhật thời điểm tạo Poison Food gần nhất
+                lastPoisonSpawnTime = gametime.elapsedTime;
+                // Cập nhật thời điểm Poison Food xuất hiện để tính thời gian tồn tại 6s
+                poisonStTime = gametime.elapsedTime;
+            }
+        }
+    } 
+    // Nếu là Level Easy, hàm này sẽ không làm gì cả.
 }
+
 // Kiểm tra va chạm với các cạnh 
 void Game::CheckCollisionWithEdges() {
     if(snake.body[0].x == cellCount || snake.body[0].x == -1) {
@@ -304,13 +328,17 @@ void Game::CheckCollisionWithEdges() {
 // Xử lý khi Game Over
 void Game::GameOver() {
     snake.Reset();
-    delete normalFood;
+    
+    // Dọn dẹp và reset cả hai loại Food
+    delete normalFood; 
     if(poisonFood != nullptr) {
         delete poisonFood;
-        poisonFood = nullptr;
-        isPoisonActive = false;
     }
+
     normalFood = new NormalFood(snake.body);
+    poisonFood = nullptr; // Đảm bảo reset cả Poison Food
+    isPoisonActive = false;
+    
     running = false;
     score = 0;
 }
