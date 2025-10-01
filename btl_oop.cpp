@@ -182,9 +182,9 @@ int main() {
     while (!WindowShouldClose() && chosenLevel == nullptr) {
         BeginDrawing();
         ClearBackground(green);
-        DrawText("CHOOSE LEVEL", offset, 150, 40, darkGreen);
-        DrawText("Press 1 for EASY", offset, 250, 30, darkGreen);
-        DrawText("Press 2 for HARD", offset, 300, 30, darkGreen);
+        DrawText("CHOOSE LEVEL", 260, 220, 50, darkGreen);
+        DrawText("Press 1 for EASY",280, 350, 35, darkGreen);
+        DrawText("Press 2 for HARD", 280, 400, 35, darkGreen);
         EndDrawing();
 
         if (IsKeyPressed(KEY_ONE)) chosenLevel = new LevelEasy();
