@@ -31,6 +31,14 @@ bool eventTriggered(double interval) {
     return false;
 }
 
+deque<Vector2> CombineSnakeBodies(const deque<Vector2>& body1, const deque<Vector2>& body2 = {}) {
+    deque<Vector2> combinedBody = body1;
+    if (!body2.empty()) {
+        combinedBody.insert(combinedBody.end(), body2.begin(), body2.end());
+    }
+    return combinedBody;
+}
+
 // ----------------- LỚP LEVEL (CẤP ĐỘ) -----------------
 class Level {
 public:
@@ -62,7 +70,7 @@ public:
     bool addSegment = false; // Cờ báo hiệu có nên thêm đốt sau khi ăn mồi không
 
     // Vẽ thân rắn lên màn hình
-    void Draw() {
+    virtual void Draw() {
         for (unsigned int i = 0; i < body.size(); i++) {
             float x = body[i].x;
             float y = body[i].y;
@@ -73,7 +81,7 @@ public:
     }
 
     // Cập nhật vị trí rắn (di chuyển)
-    void Update() {
+    virtual void Update() {
         // 1. Thêm đầu mới vào phía trước theo hướng di chuyển hiện tại
         body.push_front(Vector2Add(body[0],direction)); 
         
@@ -86,9 +94,39 @@ public:
     }
 
     // Thiết lập lại trạng thái ban đầu khi GameOver
-    void Reset() {
+    virtual void Reset() {
         body = {Vector2{6,9}, Vector2{5,9},Vector2{4,9}};
         direction = {1, 0};
+    }
+};
+
+class Player1 : public Snake {
+public:
+    Player1() {
+        body = {Vector2{6,9}, Vector2{5,9}, Vector2{4,9}};
+        direction = {1,0};
+    }
+    void Reset() override {
+        body = {Vector2{6,9}, Vector2{5,9}, Vector2{4,9}};
+        direction = {1,0};
+    }
+};
+
+class Player2 : public Snake {
+public:
+    Player2() {
+        body = {Vector2{6,20}, Vector2{5,20}, Vector2{4,20}};
+        direction = {1,0};
+    }
+    void Draw() override {
+        for (auto &p : body) {
+            Rectangle seg = {offset + p.x * cellSize, offset + p.y * cellSize, (float)cellSize, (float)cellSize};
+            DrawRectangleRounded(seg, 0.5, 6, PINK);
+        }
+    }
+    void Reset() override {
+        body = {Vector2{6,20}, Vector2{5,20}, Vector2{4,20}};
+        direction = {1,0};
     }
 };
 
@@ -138,11 +176,11 @@ public:
     ~Game();
 
     // Khai báo các phương thức (triển khai ở dưới để giải quyết dependency)
-    void Draw(); 
-    void Update(); 
+    virtual void Draw(); 
+    virtual void Update(); 
     void CheckCollisionWithFood(); 
     void CheckCollisionWithEdges(); 
-    void GameOver(); 
+    virtual void GameOver(); 
     void CheckCollisionWithTail(); 
     void CheckPoisonSpawn();
 };
@@ -166,9 +204,9 @@ public:
     }
 
     // Phương thức ảo xử lý hiệu ứng khi bị ăn. Game đã được định nghĩa.
-    virtual void OnConsumed(Game& game) {
-        game.snake.addSegment = true; // Thân rắn dài ra
-        game.score++; // Tăng 1 điểm
+    virtual void OnConsumed(Game& game, Snake& snake) {
+        snake.addSegment = true; // Thân rắn dài ra
+        game.score++; // Tăng 1 điểm (dù là 1P hay 2P, điểm vẫn nằm trong Game object)
     }
 
 public:
@@ -209,16 +247,16 @@ public :
     }
 
     // Ghi đè hiệu ứng tiêu cực
-    void OnConsumed(Game& game) override {
-        game.score = max(0,game.score - 2); // Giảm 2 điểm (dùng max để không bị âm)
+    void OnConsumed(Game& game, Snake& snake) override { 
+        game.score = max(0, game.score - 2); // Giảm 2 điểm
         
-        // Giảm độ dài rắn (nếu rắn đủ dài)
-        if(game.snake.body.size() > 3) {
-            game.snake.body.pop_back(); // Rắn ngắn lại 1 đốt
+    // Giảm độ dài rắn (nếu rắn đủ dài)
+        if(snake.body.size() > 3) { // Dùng tham số snake
+            snake.body.pop_back(); // Rắn ngắn lại 1 đốt
         } else {
             game.GameOver(); // Nếu rắn quá ngắn, kết thúc game
         }
-        game.snake.addSegment = false; // Đảm bảo rắn không dài ra
+            snake.addSegment = false; // Đảm bảo rắn không dài ra (ngay cả khi ngắn lại)
     }
 }; 
 
@@ -269,15 +307,14 @@ void Game::Update() {
 void Game::CheckCollisionWithFood() {
     // Check va chạm với Normal Food
     if(Vector2Equals(snake.body[0],normalFood->position)) {
-        normalFood->OnConsumed(*this);
+        normalFood->OnConsumed(*this, snake); // **truyền cả con rắn**
         delete normalFood;
-        // Tạo Normal Food mới ngay lập tức
-        normalFood = new NormalFood(snake.body);
+        normalFood = new NormalFood(snake.body); // Tạo Normal Food mới
     }
     
     // Check va chạm với Poison Food
     if(isPoisonActive && Vector2Equals(snake.body[0],poisonFood->position)) {
-        poisonFood->OnConsumed(*this);
+        poisonFood->OnConsumed(*this, snake); // **truyền cả con rắn**
         delete poisonFood;
         poisonFood = nullptr;
         isPoisonActive = false; // Tắt cờ Poison Food
@@ -352,6 +389,136 @@ void Game::CheckCollisionWithTail() {
     }
 }
 
+class TwoPlayerGame : public Game {
+public:
+    Player1 p1;
+    Player2 p2;
+
+    TwoPlayerGame(Level* lvl) : Game(lvl) { 
+        // Khi tạo TwoPlayerGame, cần dọn dẹp Food cũ của lớp Game (dùng cho 1P)
+        delete normalFood;
+        // Tạo Food mới, phải tránh body của cả P1 và P2
+        deque<Vector2> combinedBody = CombineSnakeBodies(p1.body, p2.body);
+        normalFood = new NormalFood(combinedBody);
+        poisonFood = nullptr;
+    }
+
+    void HandleInput() {
+        // Player 1 - WASD
+        if (IsKeyPressed(KEY_W) && p1.direction.y != 1) p1.direction = {0, -1};
+        if (IsKeyPressed(KEY_S) && p1.direction.y != -1) p1.direction = {0, 1};
+        if (IsKeyPressed(KEY_A) && p1.direction.x != 1) p1.direction = {-1, 0};
+        if (IsKeyPressed(KEY_D) && p1.direction.x != -1) p1.direction = {1, 0};
+
+        // Player 2 - Mũi tên
+        if (IsKeyPressed(KEY_UP) && p2.direction.y != 1) p2.direction = {0, -1};
+        if (IsKeyPressed(KEY_DOWN) && p2.direction.y != -1) p2.direction = {0, 1};
+        if (IsKeyPressed(KEY_LEFT) && p2.direction.x != 1) p2.direction = {-1, 0};
+        if (IsKeyPressed(KEY_RIGHT) && p2.direction.x != -1) p2.direction = {1, 0};
+    }
+
+    void Update() override {
+        if (running) {
+            gametime.Update();
+            CheckPoisonSpawn(); // Kiểm tra tạo/xóa Poison Food (vẫn dùng logic của Game)
+
+            p1.Update();
+            p2.Update();
+
+            // Lấy combined body để tạo Food mới
+            deque<Vector2> combinedBody = CombineSnakeBodies(p1.body, p2.body);
+
+            // Kiểm tra va chạm với Normal Food cho cả hai
+            if (Vector2Equals(p1.body[0], normalFood->position)) {
+                normalFood->OnConsumed(*this, p1); // **Sửa: Dùng P1**
+                delete normalFood;
+                normalFood = new NormalFood(combinedBody); // Tạo mới, tránh cả 2 rắn
+            } else if (Vector2Equals(p2.body[0], normalFood->position)) { // Dùng else if để tránh 2 con ăn 1 lúc
+                normalFood->OnConsumed(*this, p2); // **Sửa: Dùng P2**
+                delete normalFood;
+                normalFood = new NormalFood(combinedBody); // Tạo mới, tránh cả 2 rắn
+            }
+
+            // Kiểm tra va chạm với Poison Food cho cả hai
+            if (isPoisonActive) {
+                if (Vector2Equals(p1.body[0], poisonFood->position)) {
+                    poisonFood->OnConsumed(*this, p1); // **Sửa: Dùng P1**
+                    delete poisonFood;
+                    poisonFood = nullptr;
+                    isPoisonActive = false;
+                } else if (Vector2Equals(p2.body[0], poisonFood->position)) {
+                    poisonFood->OnConsumed(*this, p2); // **Sửa: Dùng P2**
+                    delete poisonFood;
+                    poisonFood = nullptr;
+                    isPoisonActive = false;
+                }
+            }
+
+            // KIỂM TRA VA CHẠM CẠNH
+            CheckSnakeCollisionWithEdges(p1);
+            CheckSnakeCollisionWithEdges(p2);
+
+            // KIỂM TRA VA CHẠM ĐUÔI
+            CheckSnakeCollisionWithTail(p1);
+            CheckSnakeCollisionWithTail(p2);
+
+            // KIỂM TRA VA CHẠM GIỮA HAI RẮN (LOGIC MỚI QUAN TRỌNG)
+            CheckSnakeVsSnakeCollision(p1, p2);
+            CheckSnakeVsSnakeCollision(p2, p1);
+        }
+    }
+
+    // Helper: Kiểm tra va chạm với cạnh cho một con rắn
+    void CheckSnakeCollisionWithEdges(const Snake& s) {
+        if (s.body[0].x == cellCount || s.body[0].x == -1 || 
+            s.body[0].y == cellCount || s.body[0].y == -1) {
+            GameOver(); // Nếu 1 trong 2 đụng, Game Over
+        }
+    }
+
+    // Helper: Kiểm tra va chạm với đuôi cho một con rắn
+    void CheckSnakeCollisionWithTail(const Snake& s) {
+        deque<Vector2> headlessBody = s.body;
+        if (headlessBody.size() > 1) { // Đảm bảo có đuôi để kiểm tra
+             headlessBody.pop_front(); 
+            if(ElementInDeque(s.body[0],headlessBody)) {
+                GameOver();
+            }
+        }
+    }
+
+    // Helper: Kiểm tra rắn A va chạm với rắn B (đầu A va chạm với thân hoặc đầu B)
+    void CheckSnakeVsSnakeCollision(const Snake& snakeA, const Snake& snakeB) {
+        if (ElementInDeque(snakeA.body[0], snakeB.body)) {
+            GameOver(); // Nếu đầu A va chạm với bất kỳ phần nào của B
+        }
+    }
+
+    void Draw() override {
+        normalFood->Draw();
+        if (isPoisonActive && poisonFood != nullptr)
+            poisonFood->Draw();
+
+        p1.Draw(); // Vẽ rắn P1
+        p2.Draw(); // Vẽ rắn P2
+    }
+
+    void GameOver() override {
+        p1.Reset();
+        p2.Reset();
+        running = false;
+        score = 0;
+
+        // Reset Food mới phải tránh body của cả P1 và P2
+        delete normalFood;
+        if (poisonFood != nullptr) delete poisonFood;
+        deque<Vector2> combinedBody = CombineSnakeBodies(p1.body, p2.body);
+        normalFood = new NormalFood(combinedBody);
+        poisonFood = nullptr;
+        isPoisonActive = false;
+    }
+};
+
 
 // ----------------- HÀM MAIN -----------------
 int main() {
@@ -359,6 +526,7 @@ int main() {
     SetTargetFPS(60);
 
     Level* chosenLevel = nullptr;
+    Game* game = nullptr;
 
     // -------- MENU chọn level --------
     while (!WindowShouldClose() && chosenLevel == nullptr) {
@@ -367,39 +535,55 @@ int main() {
         DrawText("CHOOSE LEVEL", 260, 220, 50, darkGreen);
         DrawText("Press 1 for EASY",280, 350, 35, darkGreen);
         DrawText("Press 2 for HARD", 280, 400, 35, darkGreen);
+        DrawText("Press 3 for TWO PLAYER MODE", 280, 450, 35, darkGreen);
         EndDrawing();
-        if (IsKeyPressed(KEY_ONE)) chosenLevel = new LevelEasy();
-        if (IsKeyPressed(KEY_TWO)) chosenLevel = new LevelHard();
+        if (IsKeyPressed(KEY_ONE)) {
+            chosenLevel = new LevelEasy();
+            game = new Game(chosenLevel);
+        }
+        if (IsKeyPressed(KEY_TWO)) {
+            chosenLevel = new LevelHard();
+            game = new Game(chosenLevel);
+        }
+        if (IsKeyPressed(KEY_THREE)) {
+            chosenLevel = new LevelEasy();     // Two player mode mặc định là easy
+            game = new TwoPlayerGame(chosenLevel);
+        }
     }
 
     if (chosenLevel == nullptr) { CloseWindow(); return 0; } 
-    Game game(chosenLevel); // Khởi tạo Game với cấp độ đã chọn
 
     // -------- GAME LOOP --------
     while (!WindowShouldClose()) {
         BeginDrawing();
 
         // Cập nhật game theo tốc độ của level (easy: 0.25s, hard: 0.1s)
-        if (eventTriggered(game.level->interval)) {
-            game.Update();
+        if (eventTriggered(game->level->interval)) {
+            game->Update();
         }
 
         // Xử lý Input (Điều khiển rắn)
-        if (IsKeyPressed(KEY_UP) && game.snake.direction.y != 1) {
-            game.snake.direction = {0,-1};
-            game.running = true;
-        }
-        if (IsKeyPressed(KEY_DOWN) && game.snake.direction.y != -1) {
-            game.snake.direction = {0,1};
-            game.running = true;
-        }
-        if (IsKeyPressed(KEY_LEFT) && game.snake.direction.x != 1) {
-            game.snake.direction = {-1,0};
-            game.running = true;
-        }
-        if (IsKeyPressed(KEY_RIGHT) && game.snake.direction.x != -1) {
-            game.snake.direction = {1,0};
-            game.running = true;
+        if (dynamic_cast<TwoPlayerGame*>(game) == nullptr) {
+            if (IsKeyPressed(KEY_UP) && game->snake.direction.y != 1) {
+                game->snake.direction = {0, -1};
+                game->running = true;
+            }
+            if (IsKeyPressed(KEY_DOWN) && game->snake.direction.y != -1) {
+                game->snake.direction = {0, 1};
+                game->running = true;
+            }
+            if (IsKeyPressed(KEY_LEFT) && game->snake.direction.x != 1) {
+                game->snake.direction = {-1, 0};
+                game->running = true;
+            }
+            if (IsKeyPressed(KEY_RIGHT) && game->snake.direction.x != -1) {
+                game->snake.direction = {1, 0};
+                game->running = true;
+            }
+        } 
+        else {
+            // Nếu là 2 người, gọi hàm điều khiển riêng
+            ((TwoPlayerGame*)game)->HandleInput();
         }
 
         // Vẽ màn hình
@@ -408,8 +592,8 @@ int main() {
         DrawRectangleLinesEx(Rectangle{(float)offset - 5,(float)offset-5,(float)cellSize * cellCount + 10,(float)cellSize * cellCount + 10},5,darkGreen);
         DrawText("OOP-Nhom-2",offset - 5,20,40,darkGreen);
         // Hiển thị điểm số
-        DrawText(TextFormat("%i",game.score),offset - 5,offset + cellSize*cellCount + 10,40,darkGreen);
-        game.Draw();
+        DrawText(TextFormat("%i",game->score),offset - 5,offset + cellSize*cellCount + 10,40,darkGreen);
+        game->Draw();
         EndDrawing();
     }
 
