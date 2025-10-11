@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Valid form</title>
+	<script src="ValidScript.js"></script>
+</head>
+	<body>
+		<form name="frmAccount" action="abc.jsp">
+			
+			Bộ gõ tiếng Việt:
+				<label><input type="radio" name="bogo" value="telex"> Telex</label>
+				<label><input type="radio" name="bogo" value="vni"> VNI</label>
+				<label><input type="radio" name="bogo" value="viqr"> VIQR</label>
+				<label><input type="radio" name="bogo" value="off" checked> Tắt</label> <br>
+			<label for="area">Chọn khu vực sinh sống:</label>
+				<select name="area" id="area">
+				<option value="">-- Chọn khu vực sinh sống --</option>
+				<option value="hn">Hà Nội</option>
+				<option value="hcm">TP. Hồ Chí Minh</option>
+				<option value="dn">Đà Nẵng</option>
+				</select><br/>
+			Tên truy cập:
+			<input type="text" name="loginName"/><br>
+			Mật khẩu:
+			<input type="text" name="password"/><br>
+			Xác nhận mật khẩu:
+			<input type="text" name="passwordConfirm"/><br>
+			Tên đầy đủ:
+			<input type="text" name="fullname"/><br>
+			Email:
+			<input type="text" name="email"/><br>
+			Họ và tên:
+			<input type="text" name="age"/><br>
+			Giới tính:
+			<input type="radio" name="gender"/> Male
+			<input type="radio" name="gender"/> Female <br>
+			Số điện thoại:
+			<input type="text" name="phone"/><br>
+			Website:
+			<input type="text" name="website"/><br>
+			Địa chỉ:
+			<input type="text" name="website"/><br>
+			Mã bảo vệ :
+			<input type="text" name="protectionCode"/><br>
+			
+  			<input type="checkbox" name="agree">
+  				Tôi đồng ý với <a href="#">Quy định đăng tin</a> và <a href="#">Quy chế thành viên</a>.
+			
+
+			
+				
+			<input type="button" value="Submit" onclick="validform(document.forms.frmAccount);">
+		</form>
+	</body>
+	</html>
