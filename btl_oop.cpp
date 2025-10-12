@@ -6,11 +6,11 @@
 using namespace std;
 Color green = {173,204,96,255};
 Color darkGreen = {43,51,24,255};
-Color pink = {255,192,203,255}; // Dung cho Player 2
-const int cellSize = 30; // Kich thuoc moi o vuong tren luoi
-const int cellCount = 25; // So luong o vuong theo chieu ngang/doc
-const int offset = 75; // Khoang cach tu vien man hinh den khu vuc choi
-// kiem tra de khong tao food tren than ran
+Color pink = {255,192,203,255};
+const int cellSize = 30;
+const int cellCount = 25;
+const int offset = 75;
+
 bool ElementInDeque(Vector2 element, deque<Vector2> dq) { 
     for (unsigned int i = 0; i < dq.size(); i++) { 
         if (Vector2Equals(dq[i], element)) { 
@@ -20,11 +20,10 @@ bool ElementInDeque(Vector2 element, deque<Vector2> dq) {
     return false;
 }
 
-double lastUpdateTime = 0; // Thoi diem cap nhat game gan nhat
+double lastUpdateTime = 0;
 
-// Ham kiem tra xem da den luc di chuyen ran chua
 bool eventTriggered(double interval) {
-    double currentTime = GetTime(); // GetTime() : tra ve gia tri tu luc game bat dau
+    double currentTime = GetTime();
     if (currentTime - lastUpdateTime >= interval) {
         lastUpdateTime = currentTime;
         return true;
@@ -40,41 +39,37 @@ deque<Vector2> CombineSnakeBodies(const deque<Vector2>& body1, const deque<Vecto
     return combinedBody;
 }
 
-// Khai bao truoc cac lop
 class BaseFood; 
 class PoisonFood;
+class GoldFood;
 class Snake;
 class Game;
 class TwoPlayerGame;
 
-// ----------------- LOP LEVEL (CAP DO) -----------------
 class Level {
 public:
-    double interval; // Thoi gian delay giua moi lan di chuyen (the hien toc do)
+    double interval;
     Level(double interval = 0.2) { 
         this->interval = interval; 
     }
     virtual ~Level() {} 
 };
 
-// Cap do De: Chay cham (delay 0.25s)
 class LevelEasy : public Level {
 public:
     LevelEasy() : Level(0.25) {} 
 };
 
-// Cap do Kho: Chay nhanh (delay 0.1s)
 class LevelHard : public Level {
 public:
     LevelHard() : Level(0.1) {} 
 };
 
-// ----------------- LOP SNAKE (RAN) -----------------
 class Snake {
 public:
     deque<Vector2> body = {Vector2{6,9}, Vector2{5,9}, Vector2{4,9}}; 
     Vector2 direction = {1,0}; 
-    bool addSegment = false; 
+    int segmentsToAdd = 0; // Số đốt cần thêm
 
     virtual void Draw() {
         for (unsigned int i = 0; i < body.size(); i++) {
@@ -88,30 +83,27 @@ public:
     virtual void Update() {
         body.push_front(Vector2Add(body[0],direction)); 
         
-        if(addSegment == true) {
-            addSegment = false; 
+        if(segmentsToAdd > 0) {
+            segmentsToAdd--;
         } else {
             body.pop_back(); 
         }
     }
     
-    // Ham thu nho khi an doc
     void Shrink() {
         if (body.size() > 1) {
             body.pop_back();
-            body.pop_back(); // Giam 2 dot
+            body.pop_back();
         }
         if (body.size() <= 1) {
-            body.clear(); // Neu qua ngan, xoa het (dan den game over)
+            body.clear();
         }
     }
 
-    // Kiem tra va cham voi mot toa do Food
     bool CheckCollisionWithFood(const Vector2& foodPos) const {
         return Vector2Equals(body[0], foodPos);
     }
 
-    // Kiem tra tu can duoi (khong bao gom dau)
     bool CheckCollisionWithTail() const {
         deque<Vector2> headlessBody = body;
         if (headlessBody.size() > 1) {
@@ -121,7 +113,6 @@ public:
         return false;
     }
 
-    // Kiem tra va cham dau voi than mot con ran khac
     bool CheckCollisionWithBody(const deque<Vector2>& otherBody) const {
         return ElementInDeque(body[0], otherBody);
     }
@@ -129,46 +120,46 @@ public:
     virtual void Reset() {
         body = {Vector2{6,9}, Vector2{5,9},Vector2{4,9}};
         direction = {1, 0};
+        segmentsToAdd = 0;
     }
 };
 
 class Player1 : public Snake {
 public:
     Player1() {
-        // Khoi tao trong body de tranh loi compiler
         body = {Vector2{6, 9}, Vector2{5, 9}, Vector2{4, 9}};
         direction = {1, 0};
     }
     void Reset() override {
         body = {Vector2{6,9}, Vector2{5,9}, Vector2{4,9}};
         direction = {1,0};
+        segmentsToAdd = 0;
     }
 };
 
 class Player2 : public Snake {
 public:
     Player2() {
-        // Doi vi tri ban dau cua P2 - Khoi tao trong body de tranh loi compiler
         body = {Vector2{cellCount - 7, 20}, Vector2{cellCount - 6, 20}, Vector2{cellCount - 5, 20}}; 
-        direction = {-1, 0}; // Doi huong mac dinh sang trai
+        direction = {-1, 0};
     }
     void Draw() override {
         for (auto &p : body) {
             Rectangle seg = {offset + p.x * cellSize, offset + p.y * cellSize, (float)cellSize, (float)cellSize};
-            DrawRectangleRounded(seg, 0.5, 6, pink); // Dung mau PINK cho P2
+            DrawRectangleRounded(seg, 0.5, 6, pink);
         }
     }
     void Reset() override {
         body = {Vector2{cellCount - 7, 20}, Vector2{cellCount - 6, 20}, Vector2{cellCount - 5, 20}};
         direction = {-1,0};
+        segmentsToAdd = 0;
     }
 };
 
-// ----------------- LOP GAMETIME -----------------
 class GameTime {
 public:
     double stTime;
-    double elapsedTime;// Tong time troi qua
+    double elapsedTime;
     GameTime() {
         stTime = GetTime();
         elapsedTime = 0.0;
@@ -179,7 +170,6 @@ public:
     }
 };
 
-// ----------------- LOP BASEFOOD (LOP CO SO CHO THUC AN) -----------------
 class BaseFood {
 public:
     Vector2 position;
@@ -199,8 +189,7 @@ public:
     }
 
     virtual void OnConsumed(Game& game, Snake& snake) {
-        // Logic mac dinh (dung cho NormalFood)
-        snake.addSegment = true; 
+        snake.segmentsToAdd += 1;
     }
 
 public:
@@ -219,7 +208,6 @@ public:
     }
 };
 
-// ----------------- LOP NORMALFOOD (TAO THUONG) -----------------
 class NormalFood : public BaseFood {
 public:
     NormalFood(const deque<Vector2>& body1, const deque<Vector2>& body2 = {}) : BaseFood(body1, body2) {
@@ -227,10 +215,9 @@ public:
         texture = LoadTextureFromImage(image);
         UnloadImage(image);
     }
-    void OnConsumed(Game& game, Snake& snake) override; // Khai bao
+    void OnConsumed(Game& game, Snake& snake) override;
 };
 
-// ----------------- LOP POISONFOOD (THUC AN DOC) -----------------
 class PoisonFood : public BaseFood {
 public :
     PoisonFood(const deque<Vector2>& body1, const deque<Vector2>& body2 = {}) : BaseFood(body1, body2) {
@@ -238,46 +225,58 @@ public :
         texture = LoadTextureFromImage(image);
         UnloadImage(image);
     }
-    void OnConsumed(Game& game, Snake& snake) override; // Khai bao
+    void OnConsumed(Game& game, Snake& snake) override;
 }; 
 
-// ----------------- LOP GAME (QUAN LY TRANG THAI TRO CHOI) -----------------
+class GoldFood : public BaseFood {
+public:
+    GoldFood(const deque<Vector2>& body1, const deque<Vector2>& body2 = {}) : BaseFood(body1, body2) {
+        Image image = LoadImage("gold_food.jpg"); // Tên file ảnh GoldFood của bạn
+        texture = LoadTextureFromImage(image);
+        UnloadImage(image);
+    }
+    void OnConsumed(Game& game, Snake& snake) override;
+};
+
 class Game {
 public:
     Snake snake;
     NormalFood* normalFood; 
     PoisonFood* poisonFood; 
+    GoldFood* goldFood;
     bool isPoisonActive = false; 
+    bool isGoldActive = false;
     double poisonStTime = 0.0; 
-    double lastPoisonSpawnTime = 0.0; 
+    double goldStTime = 0.0;
+    double lastPoisonSpawnTime = 0.0;
+    double lastGoldSpawnTime = 0.0;
 
     GameTime gametime;
 
     bool running = true;
     int score = 0;
     Level* level; 
-    // THEM: Bien thong bao Game Over cho ca 1P va 2P
     string gameOverMessage = ""; 
 
-    // Khai bao constructor/destructor (trien khai o duoi)
     Game(Level* lvl);
-    virtual ~Game(); // Destructor ao
+    virtual ~Game();
 
-    // Khai bao cac phuong thuc (trien khai o duoi)
     virtual void Draw(); 
     virtual void Update(); 
     void CheckCollisionWithFood(); 
     void CheckCollisionWithEdges(); 
-    virtual void GameOver(); // Ham GameOver goc (khong tham so)
+    virtual void GameOver();
     void CheckCollisionWithTail(); 
     void CheckPoisonSpawn();
+    void CheckGoldSpawn();
 };
 
-// ----------------- TRIEN KHAI PHUONG THUC GAME -----------------
 Game::Game(Level* lvl) : snake(), level(lvl) {
     normalFood = new NormalFood(snake.body);
-    poisonFood = nullptr; 
+    poisonFood = nullptr;
+    goldFood = nullptr;
     lastPoisonSpawnTime = 0.0;
+    lastGoldSpawnTime = 0.0;
     gameOverMessage = "";
 }
 
@@ -285,6 +284,9 @@ Game::~Game() {
     delete normalFood;
     if(poisonFood != nullptr) {
         delete poisonFood;
+    }
+    if(goldFood != nullptr) {
+        delete goldFood;
     }
     delete level;
 }
@@ -294,13 +296,17 @@ void Game::Draw() {
     if(isPoisonActive && poisonFood != nullptr) {
         poisonFood->Draw();
     }
+    if(isGoldActive && goldFood != nullptr) {
+        goldFood->Draw();
+    }
     snake.Draw();
 }
 
 void Game::Update() {
     if(running) {
         gametime.Update(); 
-        CheckPoisonSpawn(); 
+        CheckPoisonSpawn();
+        CheckGoldSpawn();
 
         snake.Update();
         CheckCollisionWithFood();
@@ -322,27 +328,49 @@ void Game::CheckCollisionWithFood() {
         poisonFood = nullptr;
         isPoisonActive = false; 
     }
+
+    if(isGoldActive && Vector2Equals(snake.body[0],goldFood->position)) {
+        goldFood->OnConsumed(*this, snake);
+        delete goldFood;
+        goldFood = nullptr;
+        isGoldActive = false;
+    }
 }
 
 void Game::CheckPoisonSpawn() {
     LevelHard* hardLevel = dynamic_cast<LevelHard*>(level);
     if (hardLevel != nullptr) {
-        // Xu ly Poison Food bien mat sau 6 giay
         if(isPoisonActive && (gametime.elapsedTime - poisonStTime >= 6.0)) {
             delete poisonFood;
             poisonFood = nullptr;
             isPoisonActive = false;
         }
         
-        // Xu ly viec tao moi Poison Food
         if(!isPoisonActive && (gametime.elapsedTime - lastPoisonSpawnTime >= 6.0)) {
-            poisonFood = new PoisonFood(snake.body); // 1P - Se duoc override trong TwoPlayerGame
-
+            poisonFood = new PoisonFood(snake.body);
             isPoisonActive = true;
             lastPoisonSpawnTime = gametime.elapsedTime;
             poisonStTime = gametime.elapsedTime;
         }
     } 
+}
+
+void Game::CheckGoldSpawn() {
+    LevelHard* hardLevel = dynamic_cast<LevelHard*>(level);
+    if (hardLevel != nullptr) {
+        if(isGoldActive && (gametime.elapsedTime - goldStTime >= 8.0)) {
+            delete goldFood;
+            goldFood = nullptr;
+            isGoldActive = false;
+        }
+        
+        if(!isGoldActive && (gametime.elapsedTime - lastGoldSpawnTime >= 10.0)) {
+            goldFood = new GoldFood(snake.body);
+            isGoldActive = true;
+            lastGoldSpawnTime = gametime.elapsedTime;
+            goldStTime = gametime.elapsedTime;
+        }
+    }
 }
 
 void Game::CheckCollisionWithEdges() {
@@ -358,10 +386,13 @@ void Game::GameOver() {
     
     delete normalFood; 
     if(poisonFood != nullptr) delete poisonFood;
+    if(goldFood != nullptr) delete goldFood;
 
     normalFood = new NormalFood(snake.body);
     poisonFood = nullptr; 
+    goldFood = nullptr;
     isPoisonActive = false;
+    isGoldActive = false;
     
     running = false;
     score = 0; 
@@ -374,16 +405,12 @@ void Game::CheckCollisionWithTail() {
     }
 }
 
-// ----------------- LOP TWOPLAYERGAME (CHE DO 2 NGUOI) -----------------
 class TwoPlayerGame : public Game {
 public:
     Player1 p1;
     Player2 p2;
     int scoreP1 = 0; 
     int scoreP2 = 0; 
-
-    // BIEN MOI: Trang thai nguoi thang de giai quyet loi Ambiguous Decode
-    // 0: Hoa/Ca hai thua, 1: P1 thang, 2: P2 thang
     int winner = 0; 
 
     TwoPlayerGame(Level* lvl) : Game(lvl) { 
@@ -391,17 +418,14 @@ public:
         deque<Vector2> combinedBody = CombineSnakeBodies(p1.body, p2.body);
         normalFood = new NormalFood(p1.body, p2.body);
         poisonFood = nullptr;
+        goldFood = nullptr;
     }
     
-    // Ghi de ham GameOver() (KHONG CO THAM SO)
-    // LUU Y: Day la ham duy nhat co ten GameOver trong lop nay.
-    // No doc bien 'winner' de xac dinh thong bao.
     void GameOver() override {
         p1.Reset();
         p2.Reset();
         running = false;
         
-        // Thiet lap thong bao DUA VAO bien winner
         if (winner == 1) {
             gameOverMessage = "GAME OVER: PLAYER 1 WINS!";
         } else if (winner == 2) {
@@ -410,24 +434,24 @@ public:
             gameOverMessage = "GAME OVER: DRAW! (Ca hai cung thua)";
         }
 
-        // Reset Food va trang thai
         delete normalFood;
         if (poisonFood != nullptr) delete poisonFood;
+        if (goldFood != nullptr) delete goldFood;
         
         normalFood = new NormalFood(p1.body, p2.body);
         poisonFood = nullptr;
+        goldFood = nullptr;
         isPoisonActive = false;
-        winner = 0; // Reset trang thai winner
+        isGoldActive = false;
+        winner = 0;
     }
 
     void HandleInput() {
-        // Player 1 - WASD
         if (IsKeyPressed(KEY_W) && p1.direction.y != 1) p1.direction = {0, -1};
         if (IsKeyPressed(KEY_S) && p1.direction.y != -1) p1.direction = {0, 1};
         if (IsKeyPressed(KEY_A) && p1.direction.x != 1) p1.direction = {-1, 0};
         if (IsKeyPressed(KEY_D) && p1.direction.x != -1) p1.direction = {1, 0};
 
-        // Player 2 - Mui ten
         if (IsKeyPressed(KEY_UP) && p2.direction.y != 1) p2.direction = {0, -1};
         if (IsKeyPressed(KEY_DOWN) && p2.direction.y != -1) p2.direction = {0, 1};
         if (IsKeyPressed(KEY_LEFT) && p2.direction.x != 1) p2.direction = {-1, 0};
@@ -441,16 +465,14 @@ public:
     void CheckPoisonSpawn() {
         LevelHard* hardLevel = dynamic_cast<LevelHard*>(level);
         if (hardLevel != nullptr) {
-            // Xu ly Poison Food bien mat sau 6 giay
             if(isPoisonActive && (gametime.elapsedTime - poisonStTime >= 6.0)) {
                 delete poisonFood;
                 poisonFood = nullptr;
                 isPoisonActive = false;
             }
             
-            // Xu ly viec tao moi Poison Food cho 2 Player
             if(!isPoisonActive && (gametime.elapsedTime - lastPoisonSpawnTime >= 6.0)) {
-                poisonFood = new PoisonFood(p1.body, p2.body); // Tranh ca 2 ran
+                poisonFood = new PoisonFood(p1.body, p2.body);
                 isPoisonActive = true;
                 lastPoisonSpawnTime = gametime.elapsedTime;
                 poisonStTime = gametime.elapsedTime;
@@ -458,89 +480,107 @@ public:
         } 
     }
 
+    void CheckGoldSpawn() {
+        LevelHard* hardLevel = dynamic_cast<LevelHard*>(level);
+        if (hardLevel != nullptr) {
+            if(isGoldActive && (gametime.elapsedTime - goldStTime >= 8.0)) {
+                delete goldFood;
+                goldFood = nullptr;
+                isGoldActive = false;
+            }
+            
+            if(!isGoldActive && (gametime.elapsedTime - lastGoldSpawnTime >= 10.0)) {
+                goldFood = new GoldFood(p1.body, p2.body);
+                isGoldActive = true;
+                lastGoldSpawnTime = gametime.elapsedTime;
+                goldStTime = gametime.elapsedTime;
+            }
+        }
+    }
+
     void Update() override {
         if (running) {
             gametime.Update();
-            CheckPoisonSpawn(); 
+            CheckPoisonSpawn();
+            CheckGoldSpawn();
 
             p1.Update();
             p2.Update();
 
             deque<Vector2> combinedBody = CombineSnakeBodies(p1.body, p2.body);
 
-            // Xu ly va cham Normal Food
             if (p1.CheckCollisionWithFood(normalFood->position)) {
-                p1.addSegment = true;
+                p1.segmentsToAdd += 1;
                 scoreP1++; 
                 delete normalFood; normalFood = new NormalFood(p1.body, p2.body);
             } else if (p2.CheckCollisionWithFood(normalFood->position)) { 
-                p2.addSegment = true;
+                p2.segmentsToAdd += 1;
                 scoreP2++; 
                 delete normalFood; normalFood = new NormalFood(p1.body, p2.body);
             }
 
-            // Xu ly va cham Poison Food
             if (isPoisonActive && poisonFood != nullptr) {
                 if (p1.CheckCollisionWithFood(poisonFood->position)) {
                     scoreP1 = max(0, scoreP1 - 2); 
                     p1.Shrink(); 
                     if(p1.body.empty()) {
-                        winner = 2; // P1 thua, P2 thang
+                        winner = 2;
                         GameOver(); return;
                     }
-                    p1.addSegment = false; 
+                    p1.segmentsToAdd = 0;
                     delete poisonFood; poisonFood = nullptr; isPoisonActive = false;
                 } else if (p2.CheckCollisionWithFood(poisonFood->position)) {
                     scoreP2 = max(0, scoreP2 - 2); 
                     p2.Shrink();
                     if(p2.body.empty()) {
-                        winner = 1; // P2 thua, P1 thang
+                        winner = 1;
                         GameOver(); return;
                     }
-                    p2.addSegment = false; 
+                    p2.segmentsToAdd = 0;
                     delete poisonFood; poisonFood = nullptr; isPoisonActive = false;
                 }
             }
 
+            if (isGoldActive && goldFood != nullptr) {
+                if (p1.CheckCollisionWithFood(goldFood->position)) {
+                    p1.segmentsToAdd += 2;
+                    scoreP1 += 3;
+                    delete goldFood; goldFood = nullptr; isGoldActive = false;
+                } else if (p2.CheckCollisionWithFood(goldFood->position)) {
+                    p2.segmentsToAdd += 2;
+                    scoreP2 += 3;
+                    delete goldFood; goldFood = nullptr; isGoldActive = false;
+                }
+            }
 
-            // **********************************************
-            // LOGIC QUYET DINH THANG THUA (THIET LAP BIEN WINNER)
-            // **********************************************
             bool p1Crashed = false; 
             bool p2Crashed = false; 
 
-            // 1. KIEM TRA VA CHAM DAU-DAU (Uu tien cao nhat)
             if (Vector2Equals(p1.body[0], p2.body[0])) {
-                winner = 0; // Hoa
+                winner = 0;
                 GameOver(); 
                 return; 
             }
 
-            // 2. THIET LAP CO CHO TAT CA CAC VA CHAM KHAC
-            
-            // A. Va cham Canh
             if (p1.body[0].x == cellCount || p1.body[0].x == -1 || p1.body[0].y == cellCount || p1.body[0].y == -1) p1Crashed = true;
             if (p2.body[0].x == cellCount || p2.body[0].x == -1 || p2.body[0].y == cellCount || p2.body[0].y == -1) p2Crashed = true;
 
-            // B. Va cham Duoi (Tu can minh)
             if (p1.CheckCollisionWithTail()) p1Crashed = true;
             if (p2.CheckCollisionWithTail()) p2Crashed = true;
 
-            // C. Va cham Giua hai ran (Dau dam Than doi phuong)
             if (p1.CheckCollisionWithBody(p2.body)) p1Crashed = true; 
             if (p2.CheckCollisionWithBody(p1.body)) p2Crashed = true; 
             
-            // 3. QUYET DINH NGUOI THANG DUA TREN CO
             if (p1Crashed && p2Crashed) {
-                winner = 0; // Ca hai cung va cham -> Hoa
+                winner = 0;
                 GameOver(); 
             } 
             else if (p1Crashed) {
-                winner = 2; // P1 thua, P2 thang
+                winner = 2;
                 GameOver(); 
             } 
             else if (p2Crashed) {
-                winner = 1; // P2 thua, P1 thang
+                winner = 1;
                 GameOver(); 
             }
         }
@@ -550,26 +590,23 @@ public:
         normalFood->Draw();
         if (isPoisonActive && poisonFood != nullptr)
             poisonFood->Draw();
+        if (isGoldActive && goldFood != nullptr)
+            goldFood->Draw();
 
         p1.Draw(); 
         p2.Draw(); 
     }
 };
 
-
-// ----------------- TRIEN KHAI PHUONG THUC FOOD (SAU KHI DINH NGHIA TwoPlayerGame) -----------------
 void NormalFood::OnConsumed(Game& game, Snake& snake) {
-    snake.addSegment = true; 
-    // Trong 1P, dung diem chung cua Game
+    snake.segmentsToAdd += 1;
     TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(&game);
     if (tpGame == nullptr) {
         game.score++; 
     }
-    // Trong 2P, logic diem da duoc chuyen ve Update() cua TwoPlayerGame
 }
 
 void PoisonFood::OnConsumed(Game& game, Snake& snake) { 
-    // Chi xu ly logic giam do dai/Game Over cho che do 1P
     TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(&game);
     if (tpGame == nullptr) {
         game.score = max(0, game.score - 2); 
@@ -579,13 +616,18 @@ void PoisonFood::OnConsumed(Game& game, Snake& snake) {
             game.gameOverMessage = "GAME OVER - Ran qua ngan do an doc!"; 
             game.GameOver(); 
         }
-        snake.addSegment = false; 
+        snake.segmentsToAdd = 0;
     }
-    // Trong 2P, logic nay da duoc chuyen ve Update() cua TwoPlayerGame
 }
 
+void GoldFood::OnConsumed(Game& game, Snake& snake) {
+    snake.segmentsToAdd += 2; // Thêm 2 đốt
+    TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(&game);
+    if (tpGame == nullptr) {
+        game.score += 3; // Thêm 3 điểm
+    }
+}
 
-// ----------------- HAM MAIN -----------------
 int main() {
     InitWindow(2*offset + cellSize * cellCount,2 * offset + cellSize * cellCount, "BTL_OOP");
     SetTargetFPS(60);
@@ -593,7 +635,6 @@ int main() {
     Level* chosenLevel = nullptr;
     Game* game = nullptr;
 
-    // -------- MENU chon level --------
     while (!WindowShouldClose() && chosenLevel == nullptr) {
         BeginDrawing();
         ClearBackground(green);
@@ -618,16 +659,13 @@ int main() {
 
     if (chosenLevel == nullptr) { CloseWindow(); return 0; } 
 
-    // -------- GAME LOOP --------
     while (!WindowShouldClose()) {
         BeginDrawing();
 
-        // Cap nhat game theo toc do cua level (easy: 0.25s, hard: 0.1s)
         if (eventTriggered(game->level->interval)) {
             game->Update();
         }
 
-        // Xu ly Input (Dieu khien ran)
         TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(game);
         if (tpGame == nullptr) {
             if (IsKeyPressed(KEY_UP) && game->snake.direction.y != 1) {
@@ -648,17 +686,13 @@ int main() {
             }
         } 
         else {
-            // Neu la 2 nguoi, goi ham dieu khien rieng
             tpGame->HandleInput();
         }
 
-        // Ve man hinh
         ClearBackground(green);
-        // Ve vien ngoai khu vuc choi
         DrawRectangleLinesEx(Rectangle{(float)offset - 5,(float)offset-5,(float)cellSize * cellCount + 10,(float)cellSize * cellCount + 10},5,darkGreen);
         DrawText("OOP-Nhom-2",offset - 5,20,40,darkGreen);
         
-        // Hien thi diem so
         if (tpGame != nullptr) {
             DrawText(TextFormat("P1: %i", tpGame->scoreP1), offset - 5, offset + cellSize*cellCount + 10, 40, darkGreen);
             DrawText(TextFormat("P2: %i", tpGame->scoreP2), offset + cellSize*cellCount - 150, offset + cellSize*cellCount + 10, 40, pink);
@@ -668,7 +702,6 @@ int main() {
 
         game->Draw();
         
-        // HIEN THI THONG BAO GAME OVER
         if (game->running == false) {
             string msg = game->gameOverMessage;
             if (msg.empty()) {
@@ -676,11 +709,9 @@ int main() {
             }
             DrawText(msg.c_str(), 150, (2*offset + cellSize*cellCount)/2 - 30, 40, RED);
 
-            // Xu ly restart
             if (IsKeyPressed(KEY_ENTER)) {
                 game->running = true; 
-                game->gameOverMessage = ""; // Xoa thong bao
-                // Tai khoi dong GameTime
+                game->gameOverMessage = "";
                 game->gametime = GameTime(); 
             }
         }
@@ -688,7 +719,7 @@ int main() {
         EndDrawing();
     }
 
-    delete game; // Don dep bo nho
+    delete game;
     CloseWindow();
     return 0;
 }
