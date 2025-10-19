@@ -2,7 +2,9 @@
 #include "raylib.h"
 #include <deque>
 #include "raymath.h"
-#include <algorithm> 
+#include <algorithm>
+#include <vector>
+
 using namespace std;
 Color green = {173,204,96,255};
 Color darkGreen = {43,51,24,255};
@@ -238,12 +240,49 @@ public:
     void OnConsumed(Game& game, Snake& snake) override;
 };
 
+class Obstacle {
+public:
+    Vector2 position;
+
+    // Constructor để tạo chướng ngại vật ở một vị trí ngẫu nhiên
+    // Cần danh sách các ô đã bị chiếm (rắn, thức ăn) để không tạo đè lên
+    Obstacle(const deque<Vector2>& occupiedCells) {
+        position = GenerateRandomPos(occupiedCells);
+    }
+
+    void Draw() {
+        Rectangle rect = {
+            offset + position.x * cellSize,
+            offset + position.y * cellSize,
+            (float)cellSize,
+            (float)cellSize
+        };
+        DrawRectangleRec(rect, GRAY); // Dùng màu xám cho chướng ngại vật
+    }
+
+private:
+    Vector2 GenerateRandomCell() {
+        float x = GetRandomValue(0, cellCount - 1);
+        float y = GetRandomValue(0, cellCount - 1);
+        return Vector2{x, y};
+    }
+
+    Vector2 GenerateRandomPos(const deque<Vector2>& occupiedCells) {
+        Vector2 pos = GenerateRandomCell();
+        while (ElementInDeque(pos, occupiedCells)) {
+            pos = GenerateRandomCell();
+        }
+        return pos;
+    }
+};
+
 class Game {
 public:
     Snake snake;
     NormalFood* normalFood; 
     PoisonFood* poisonFood; 
     GoldFood* goldFood;
+    vector<Obstacle*> obstacles;
     bool isPoisonActive = false; 
     bool isGoldActive = false;
     double poisonStTime = 0.0; 
@@ -269,6 +308,8 @@ public:
     void CheckCollisionWithTail(); 
     void CheckPoisonSpawn();
     void CheckGoldSpawn();
+    void CheckCollisionWithObstacles(); // hàm kiểm tra va chạm
+    void GenerateObstacles(); // tạo chướng ngại vật
 };
 
 Game::Game(Level* lvl) : snake(), level(lvl) {
@@ -278,6 +319,7 @@ Game::Game(Level* lvl) : snake(), level(lvl) {
     lastPoisonSpawnTime = 0.0;
     lastGoldSpawnTime = 0.0;
     gameOverMessage = "";
+    GenerateObstacles();
 }
 
 Game::~Game() {
@@ -288,7 +330,13 @@ Game::~Game() {
     if(goldFood != nullptr) {
         delete goldFood;
     }
+    for (auto obs : obstacles) {
+        delete obs;
+    }
+    obstacles.clear();
     delete level;
+
+    
 }
 
 void Game::Draw() {
@@ -300,6 +348,10 @@ void Game::Draw() {
         goldFood->Draw();
     }
     snake.Draw();
+
+    for (auto& obs : obstacles) {
+        obs->Draw();
+    }
 }
 
 void Game::Update() {
@@ -312,6 +364,7 @@ void Game::Update() {
         CheckCollisionWithFood();
         CheckCollisionWithEdges();
         CheckCollisionWithTail();
+        CheckCollisionWithObstacles();
     }
 }
 
@@ -393,6 +446,8 @@ void Game::GameOver() {
     goldFood = nullptr;
     isPoisonActive = false;
     isGoldActive = false;
+
+    GenerateObstacles(); // tạo lại các chướng ngại vật khác mỗi khi reset
     
     running = false;
     score = 0; 
@@ -402,6 +457,36 @@ void Game::CheckCollisionWithTail() {
     if(snake.CheckCollisionWithTail()) {
         gameOverMessage = "GAME OVER - Tu can duoi!"; 
         GameOver();
+    }
+}
+
+void Game::GenerateObstacles() {
+    // dọn dẹp danh sách cũ khi reset game
+    for (auto obs : obstacles) {
+        delete obs;
+    }
+    obstacles.clear();
+
+    deque<Vector2> occupiedCells = snake.body;
+    occupiedCells.push_back(normalFood->position);
+    
+    // số chướng ngại vật muốn tạo
+    int obstacleCount = 5;
+    for (int i = 0; i < obstacleCount; i++) {
+        Obstacle* newObstacle = new Obstacle(occupiedCells);
+        obstacles.push_back(newObstacle);
+        // Thêm vị trí của chướng ngại vật vừa tạo vào danh sách đã chiếm
+        // để chướng ngại vật tiếp theo không bị tạo trùng
+        occupiedCells.push_back(newObstacle->position);
+    }
+}
+
+void Game::CheckCollisionWithObstacles() {
+    for (auto& obs : obstacles) {
+        if (Vector2Equals(snake.body[0], obs->position)) {
+            gameOverMessage = "GAME OVER - Va cham chuong ngai vat!";
+            GameOver();
+        }
     }
 }
 
@@ -419,6 +504,8 @@ public:
         normalFood = new NormalFood(p1.body, p2.body);
         poisonFood = nullptr;
         goldFood = nullptr;
+
+        GenerateObstacles();
     }
     
     void GameOver() override {
@@ -553,8 +640,17 @@ public:
                 }
             }
 
-            bool p1Crashed = false; 
-            bool p2Crashed = false; 
+            bool p1Crashed = false;
+            bool p2Crashed = false;
+
+            for (auto& obs : obstacles) {
+                if (Vector2Equals(p1.body[0], obs->position)) {
+                    p1Crashed = true;
+                }
+                if (Vector2Equals(p2.body[0], obs->position)) {
+                    p2Crashed = true;
+                }
+            }
 
             if (Vector2Equals(p1.body[0], p2.body[0])) {
                 winner = 0;
@@ -595,6 +691,10 @@ public:
 
         p1.Draw(); 
         p2.Draw(); 
+
+        for (auto& obs : obstacles) {
+            obs->Draw();
+        }
     }
 };
 
