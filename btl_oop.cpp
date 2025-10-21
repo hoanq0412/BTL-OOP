@@ -1,8 +1,10 @@
-﻿#include <iostream>
+#include <iostream>
 #include "raylib.h"
 #include <deque>
 #include "raymath.h"
-#include <algorithm> 
+#include <algorithm>
+#include <vector>
+
 using namespace std;
 Color green = {173,204,96,255};
 Color darkGreen = {43,51,24,255};
@@ -238,14 +240,52 @@ public:
     void OnConsumed(Game& game, Snake& snake) override;
 };
 
+class Obstacle {
+public:
+    Vector2 position;
+
+    // Constructor để tạo chướng ngại vật ở một vị trí ngẫu nhiên
+    // Cần danh sách các ô đã bị chiếm (rắn, thức ăn) để không tạo đè lên
+    Obstacle(const deque<Vector2>& occupiedCells) {
+        position = GenerateRandomPos(occupiedCells);
+    }
+
+    void Draw() {
+        Rectangle rect = {
+            offset + position.x * cellSize,
+            offset + position.y * cellSize,
+            (float)cellSize,
+            (float)cellSize
+        };
+        DrawRectangleRec(rect, GRAY); // Dùng màu xám cho chướng ngại vật
+    }
+
+private:
+    Vector2 GenerateRandomCell() {
+        float x = GetRandomValue(0, cellCount - 1);
+        float y = GetRandomValue(0, cellCount - 1);
+        return Vector2{x, y};
+    }
+
+    Vector2 GenerateRandomPos(const deque<Vector2>& occupiedCells) {
+        Vector2 pos = GenerateRandomCell();
+        while (ElementInDeque(pos, occupiedCells)) {
+            pos = GenerateRandomCell();
+        }
+        return pos;
+    }
+};
+
 class Game {
 public:
     Snake snake;
     NormalFood* normalFood; 
     PoisonFood* poisonFood; 
     GoldFood* goldFood;
+    vector<Obstacle*> obstacles;
     bool isPoisonActive = false; 
     bool isGoldActive = false;
+    bool paused = false;
     double poisonStTime = 0.0; 
     double goldStTime = 0.0;
     double lastPoisonSpawnTime = 0.0;
@@ -269,6 +309,8 @@ public:
     void CheckCollisionWithTail(); 
     void CheckPoisonSpawn();
     void CheckGoldSpawn();
+    void CheckCollisionWithObstacles(); // hàm kiểm tra va chạm
+    void GenerateObstacles(); // tạo chướng ngại vật
 };
 
 Game::Game(Level* lvl) : snake(), level(lvl) {
@@ -278,6 +320,7 @@ Game::Game(Level* lvl) : snake(), level(lvl) {
     lastPoisonSpawnTime = 0.0;
     lastGoldSpawnTime = 0.0;
     gameOverMessage = "";
+    GenerateObstacles();
 }
 
 Game::~Game() {
@@ -288,7 +331,13 @@ Game::~Game() {
     if(goldFood != nullptr) {
         delete goldFood;
     }
+    for (auto obs : obstacles) {
+        delete obs;
+    }
+    obstacles.clear();
     delete level;
+
+    
 }
 
 void Game::Draw() {
@@ -300,10 +349,14 @@ void Game::Draw() {
         goldFood->Draw();
     }
     snake.Draw();
+
+    for (auto& obs : obstacles) {
+        obs->Draw();
+    }
 }
 
 void Game::Update() {
-    if(running) {
+    if(running && !paused) {
         gametime.Update(); 
         CheckPoisonSpawn();
         CheckGoldSpawn();
@@ -312,6 +365,7 @@ void Game::Update() {
         CheckCollisionWithFood();
         CheckCollisionWithEdges();
         CheckCollisionWithTail();
+        CheckCollisionWithObstacles();
     }
 }
 
@@ -393,6 +447,8 @@ void Game::GameOver() {
     goldFood = nullptr;
     isPoisonActive = false;
     isGoldActive = false;
+
+    GenerateObstacles(); // tạo lại các chướng ngại vật khác mỗi khi reset
     
     running = false;
     score = 0; 
@@ -405,13 +461,44 @@ void Game::CheckCollisionWithTail() {
     }
 }
 
+void Game::GenerateObstacles() {
+    // dọn dẹp danh sách cũ khi reset game
+    for (auto obs : obstacles) {
+        delete obs;
+    }
+    obstacles.clear();
+
+    deque<Vector2> occupiedCells = snake.body;
+    occupiedCells.push_back(normalFood->position);
+    
+    // số chướng ngại vật muốn tạo
+    int obstacleCount = 10;
+    for (int i = 0; i < obstacleCount; i++) {
+        Obstacle* newObstacle = new Obstacle(occupiedCells);
+        obstacles.push_back(newObstacle);
+        // Thêm vị trí của chướng ngại vật vừa tạo vào danh sách đã chiếm
+        // để chướng ngại vật tiếp theo không bị tạo trùng
+        occupiedCells.push_back(newObstacle->position);
+    }
+}
+
+void Game::CheckCollisionWithObstacles() {
+    for (auto& obs : obstacles) {
+        if (Vector2Equals(snake.body[0], obs->position)) {
+            gameOverMessage = "GAME OVER - Va cham chuong ngai vat!";
+            GameOver();
+        }
+    }
+}
+
 class TwoPlayerGame : public Game {
 public:
     Player1 p1;
     Player2 p2;
     int scoreP1 = 0; 
     int scoreP2 = 0; 
-    int winner = 0; 
+    int winner = 0;
+    bool paused = false;
 
     TwoPlayerGame(Level* lvl) : Game(lvl) { 
         delete normalFood;
@@ -419,6 +506,8 @@ public:
         normalFood = new NormalFood(p1.body, p2.body);
         poisonFood = nullptr;
         goldFood = nullptr;
+
+        GenerateObstacles();
     }
     
     void GameOver() override {
@@ -499,7 +588,7 @@ public:
     }
 
     void Update() override {
-        if (running) {
+        if (running && !paused) {
             gametime.Update();
             CheckPoisonSpawn();
             CheckGoldSpawn();
@@ -553,8 +642,17 @@ public:
                 }
             }
 
-            bool p1Crashed = false; 
-            bool p2Crashed = false; 
+            bool p1Crashed = false;
+            bool p2Crashed = false;
+
+            for (auto& obs : obstacles) {
+                if (Vector2Equals(p1.body[0], obs->position)) {
+                    p1Crashed = true;
+                }
+                if (Vector2Equals(p2.body[0], obs->position)) {
+                    p2Crashed = true;
+                }
+            }
 
             if (Vector2Equals(p1.body[0], p2.body[0])) {
                 winner = 0;
@@ -595,6 +693,10 @@ public:
 
         p1.Draw(); 
         p2.Draw(); 
+
+        for (auto& obs : obstacles) {
+            obs->Draw();
+        }
     }
 };
 
@@ -629,94 +731,126 @@ void GoldFood::OnConsumed(Game& game, Snake& snake) {
 }
 
 int main() {
-    InitWindow(2*offset + cellSize * cellCount,2 * offset + cellSize * cellCount, "BTL_OOP");
+    InitWindow(2 * offset + cellSize * cellCount, 2 * offset + cellSize * cellCount, "BTL_OOP");
     SetTargetFPS(60);
 
     Level* chosenLevel = nullptr;
     Game* game = nullptr;
 
-    while (!WindowShouldClose() && chosenLevel == nullptr) {
-        BeginDrawing();
-        ClearBackground(green);
-        DrawText("CHOOSE LEVEL", 260, 220, 50, darkGreen);
-        DrawText("Press 1 for EASY",280, 350, 35, darkGreen);
-        DrawText("Press 2 for HARD", 280, 400, 35, darkGreen);
-        DrawText("Press 3 for TWO PLAYER MODE", 280, 450, 35, darkGreen);
-        EndDrawing();
-        if (IsKeyPressed(KEY_ONE)) {
-            chosenLevel = new LevelEasy();
-            game = new Game(chosenLevel);
-        }
-        if (IsKeyPressed(KEY_TWO)) {
-            chosenLevel = new LevelHard();
-            game = new Game(chosenLevel);
-        }
-        if (IsKeyPressed(KEY_THREE)) {
-            chosenLevel = new LevelHard();     
-            game = new TwoPlayerGame(chosenLevel);
-        }
-    }
-
-    if (chosenLevel == nullptr) { CloseWindow(); return 0; } 
-
     while (!WindowShouldClose()) {
-        BeginDrawing();
 
-        if (eventTriggered(game->level->interval)) {
-            game->Update();
-        }
+        // ================= MENU CHỌN LEVEL =================
+        while (!WindowShouldClose() && chosenLevel == nullptr) {
+            BeginDrawing();
+            ClearBackground(green);
+            DrawText("CHOOSE LEVEL", 260, 220, 50, darkGreen);
+            DrawText("Press 1 for EASY", 280, 350, 35, darkGreen);
+            DrawText("Press 2 for HARD", 280, 400, 35, darkGreen);
+            DrawText("Press 3 for TWO PLAYER MODE", 280, 450, 35, darkGreen);
+            DrawText("Press ESC to EXIT", 280, 500, 35, RED);
+            EndDrawing();
 
-        TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(game);
-        if (tpGame == nullptr) {
-            if (IsKeyPressed(KEY_UP) && game->snake.direction.y != 1) {
-                game->snake.direction = {0, -1};
-                game->running = true;
+            if (IsKeyPressed(KEY_ONE)) {
+                chosenLevel = new LevelEasy();
+                game = new Game(chosenLevel);
             }
-            if (IsKeyPressed(KEY_DOWN) && game->snake.direction.y != -1) {
-                game->snake.direction = {0, 1};
-                game->running = true;
+            if (IsKeyPressed(KEY_TWO)) {
+                chosenLevel = new LevelHard();
+                game = new Game(chosenLevel);
             }
-            if (IsKeyPressed(KEY_LEFT) && game->snake.direction.x != 1) {
-                game->snake.direction = {-1, 0};
-                game->running = true;
+            if (IsKeyPressed(KEY_THREE)) {
+                chosenLevel = new LevelHard();
+                game = new TwoPlayerGame(chosenLevel);
             }
-            if (IsKeyPressed(KEY_RIGHT) && game->snake.direction.x != -1) {
-                game->snake.direction = {1, 0};
-                game->running = true;
-            }
-        } 
-        else {
-            tpGame->HandleInput();
-        }
-
-        ClearBackground(green);
-        DrawRectangleLinesEx(Rectangle{(float)offset - 5,(float)offset-5,(float)cellSize * cellCount + 10,(float)cellSize * cellCount + 10},5,darkGreen);
-        DrawText("OOP-Nhom-2",offset - 5,20,40,darkGreen);
-        
-        if (tpGame != nullptr) {
-            DrawText(TextFormat("P1: %i", tpGame->scoreP1), offset - 5, offset + cellSize*cellCount + 10, 40, darkGreen);
-            DrawText(TextFormat("P2: %i", tpGame->scoreP2), offset + cellSize*cellCount - 150, offset + cellSize*cellCount + 10, 40, pink);
-        } else {
-            DrawText(TextFormat("%i",game->score),offset - 5,offset + cellSize*cellCount + 10,40,darkGreen);
-        }
-
-        game->Draw();
-        
-        if (game->running == false) {
-            string msg = game->gameOverMessage;
-            if (msg.empty()) {
-                msg = "GAME OVER. Press ENTER to continue."; 
-            }
-            DrawText(msg.c_str(), 150, (2*offset + cellSize*cellCount)/2 - 30, 40, RED);
-
-            if (IsKeyPressed(KEY_ENTER)) {
-                game->running = true; 
-                game->gameOverMessage = "";
-                game->gametime = GameTime(); 
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                CloseWindow();
+                return 0;
             }
         }
 
-        EndDrawing();
+        // ================= VÒNG LẶP CHƠI GAME =================
+        while (!WindowShouldClose() && chosenLevel != nullptr) {
+            BeginDrawing();
+
+            // ---- PAUSE GAME ----
+            if (IsKeyPressed(KEY_P)) {
+                game->paused = !game->paused;
+            }
+
+            // ---- THOÁT VỀ MENU CHỌN LEVEL ----
+            if (IsKeyPressed(KEY_Z)) {
+                delete game;
+                chosenLevel = nullptr;
+                game = nullptr;
+                break; // ← THOÁT KHỎI VÒNG LẶP GAME, QUAY LẠI MENU
+            }
+
+            // ---- CẬP NHẬT GAME ----
+            if (!game->paused && eventTriggered(game->level->interval)) {
+                game->Update();
+            }
+
+            TwoPlayerGame* tpGame = dynamic_cast<TwoPlayerGame*>(game);
+            if (tpGame == nullptr) {
+                if (IsKeyPressed(KEY_UP) && game->snake.direction.y != 1) {
+                    game->snake.direction = {0, -1};
+                    game->running = true;
+                }
+                if (IsKeyPressed(KEY_DOWN) && game->snake.direction.y != -1) {
+                    game->snake.direction = {0, 1};
+                    game->running = true;
+                }
+                if (IsKeyPressed(KEY_LEFT) && game->snake.direction.x != 1) {
+                    game->snake.direction = {-1, 0};
+                    game->running = true;
+                }
+                if (IsKeyPressed(KEY_RIGHT) && game->snake.direction.x != -1) {
+                    game->snake.direction = {1, 0};
+                    game->running = true;
+                }
+            } else {
+                tpGame->HandleInput();
+            }
+
+            // ---- VẼ GAME ----
+            ClearBackground(green);
+            DrawRectangleLinesEx(Rectangle{(float)offset - 5, (float)offset - 5,
+                (float)cellSize * cellCount + 10, (float)cellSize * cellCount + 10}, 5, darkGreen);
+            DrawText("OOP-Nhom-2", offset - 5, 20, 40, darkGreen);
+
+            if (tpGame != nullptr) {
+                DrawText(TextFormat("P1: %i", tpGame->scoreP1),
+                         offset - 5, offset + cellSize * cellCount + 10, 40, darkGreen);
+                DrawText(TextFormat("P2: %i", tpGame->scoreP2),
+                         offset + cellSize * cellCount - 150,
+                         offset + cellSize * cellCount + 10, 40, pink);
+            } else {
+                DrawText(TextFormat("%i", game->score),
+                         offset - 5, offset + cellSize * cellCount + 10, 40, darkGreen);
+            }
+
+            game->Draw();
+
+            // ---- HIỂN THỊ PAUSE ----
+            if (game->paused) {
+                DrawText("PAUSED", 320, 320, 50, RED);
+            }
+
+            // ---- HIỂN THỊ GAME OVER ----
+            if (!game->running) {
+                string msg = game->gameOverMessage;
+                if (msg.empty()) msg = "GAME OVER. Press ENTER to continue.";
+                DrawText(msg.c_str(), 150, (2 * offset + cellSize * cellCount) / 2 - 30, 40, RED);
+
+                if (IsKeyPressed(KEY_ENTER)) {
+                    game->running = true;
+                    game->gameOverMessage = "";
+                    game->gametime = GameTime();
+                }
+            }
+
+            EndDrawing();
+        }
     }
 
     delete game;
