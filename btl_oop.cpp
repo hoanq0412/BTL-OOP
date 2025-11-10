@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include "raylib.h"
 #include <deque>
 #include "raymath.h"
@@ -65,7 +65,7 @@ public:
 
 class LevelHard : public Level {
 public:
-    LevelHard() : Level(0.1) {} 
+    LevelHard() : Level(0.2) {} 
 };
 
 class Snake {
@@ -84,7 +84,7 @@ public:
     }
 
     virtual void Update() {
-        body.push_front(Vector2Add(body[0],direction)); 
+        body.push_front(Vector2Add(body[0],direction)); // them toa do dau moi
         
         if(segmentsToAdd > 0) {
             segmentsToAdd--;
@@ -299,6 +299,7 @@ public:
 
     bool running = true;
     int score = 0;
+    bool check = false;
     string gameOverMessage = ""; 
 
     Game(Level* lvl);
@@ -819,6 +820,14 @@ int main() {
                 chosenLevel = nullptr;
                 game = nullptr;
                 break;
+            }
+
+            if(game->score % 5 == 0 && game->level->interval > 0 && game->score != 0 && !game->check) {
+                game->level->interval -= 0.02;
+                game->check = true;
+            }
+            if(game->score % 5 != 0) {
+                game->check = false;
             }
 
             if (!game->paused && eventTriggered(game->level->interval)) {
